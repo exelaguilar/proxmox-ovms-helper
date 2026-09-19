@@ -15,13 +15,14 @@ network bridge, and storage. The container is unprivileged and uses the
 standard Proxmox `nesting=1,keyctl=1` features for systemd compatibility.
 
 The initial model is `OpenVINO/Qwen3-VL-4B-Instruct-int4-ov`. Its first
-startup downloads about 3.1 GB from Hugging Face. The helper tests actual text
-and synthetic-image inference before reporting success. It keeps GPU mode
-only if both probes pass; otherwise it tests CPU mode and reports that
-fallback explicitly. A passing CPU fallback means the API works, not that GPU
-acceleration does. The Proxmox host kernel and Intel driver remain in use
-inside the LXC, so supported userspace packages alone cannot guarantee GPU
-inference on every Arrow Lake system.
+startup downloads about 3.1 GB from Hugging Face. The helper runs text and
+synthetic-image inference checks on the Intel GPU before reporting success. It
+uses OVMS's `VLM` pipeline, which was verified on this Arrow Lake system after
+the `VLM_CB` pipeline crashed with `CL_OUT_OF_RESOURCES`. Health checks are
+GPU-only: if inference fails, the helper reports failure and leaves the GPU
+target selected; it never silently switches to CPU. The Proxmox host kernel
+and Intel driver remain in use inside the LXC, so supported userspace packages
+alone cannot guarantee GPU inference on every Arrow Lake system.
 
 ## Install
 
@@ -66,9 +67,10 @@ update
 ```
 
 The update checks whether Intel/OpenVINO runtime package versions changed,
-restarts OVMS, tests text and image inference, and falls back to CPU only if
-GPU inference fails but CPU inference passes. Package-version diffs are
-appended to `/var/log/ovms-runtime-updates.log`. Other service commands are:
+restarts OVMS, and tests text and image inference on the configured GPU. A
+failed GPU test is reported as a failure; the helper does not switch to CPU.
+Package-version diffs are appended to `/var/log/ovms-runtime-updates.log`.
+Other service commands are:
 
 ```bash
 ovms-helper status
@@ -79,17 +81,23 @@ ovms-helper healthcheck
 
 ## Home Assistant
 
-Use this OpenAI-compatible base URL and model name in Home Assistant or an
-integration that supports OpenAI-compatible vision models:
+For LLM Vision, add a **Custom OpenAI** provider (not the Ollama provider).
+The current Custom OpenAI form expects the full chat-completions endpoint.
+Use:
 
 ```text
-Base URL:   http://<CT-IP>:8000/v1
-Model name: qwen3-vl-4b
+API key:          openai
+Custom endpoint:  http://<CT-IP>:8000/v1/chat/completions
+Default model:    qwen3-vl-4b
 ```
 
-The API has no authentication configured. Keep port 8000 on a trusted LAN or
-restrict it with the Proxmox firewall to the Home Assistant host. For host-side
-checks (replace `120` with the actual CTID):
+The API does not require authentication; `openai` is a dummy key for the
+integration's required field. In LLM Vision's Settings, leave **Fallback
+provider** set to **No Fallback** unless you deliberately want a different
+provider to take over on failure. Keep port 8000 on a trusted LAN or restrict
+it with the Proxmox firewall to the Home Assistant host. Since the LXC uses
+DHCP, reserve its address in your router before relying on it in Home
+Assistant. For host-side checks (replace `120` with the actual CTID):
 
 ```bash
 pct exec 120 -- systemctl status ovms

@@ -3,7 +3,7 @@
 # Standalone implementation following the Community Scripts interaction style.
 set -Eeuo pipefail
 
-readonly HELPER_VERSION="1.2.0"
+readonly HELPER_VERSION="1.3.0"
 readonly OVMS_VERSION="2026.4.0"
 readonly OVMS_ARCHIVE="ovms_ubuntu24_${OVMS_VERSION}_python_on.tar.gz"
 # Official digest for this exact Ubuntu 24.04 Python-enabled release asset.
@@ -335,7 +335,7 @@ case "${1:-}" in
   status) systemctl status ovms --no-pager ;;
   restart) systemctl restart ovms ;;
   logs) journalctl -u ovms -f ;;
-  healthcheck) /usr/local/sbin/ovms-healthcheck --allow-cpu-fallback ;;
+  healthcheck) /usr/local/sbin/ovms-healthcheck ;;
   update)
     export DEBIAN_FRONTEND=noninteractive
     runtime_before="$(mktemp)"
@@ -359,7 +359,7 @@ case "${1:-}" in
       { date --iso-8601=seconds; cat "$runtime_diff"; printf '\n'; } >>/var/log/ovms-runtime-updates.log
     fi
     systemctl restart ovms
-    /usr/local/sbin/ovms-healthcheck --allow-cpu-fallback
+    /usr/local/sbin/ovms-healthcheck
     apt-get clean
     rm -rf /var/lib/apt/lists/*
     ;;
@@ -382,15 +382,14 @@ readonly MODEL_NAME="qwen3-vl-4b"
 readonly API_URL="http://127.0.0.1:8000"
 readonly WAIT_SECONDS=1800
 
+if (( $# > 0 )); then
+  echo "Usage: ovms-healthcheck (tests the configured device only; no CPU fallback)." >&2
+  exit 2
+fi
+
 current_device() {
   . /etc/ovms/ovms.env
   printf '%s' "${OVMS_TARGET_DEVICE:-GPU}"
-}
-
-set_device() {
-  printf 'OVMS_TARGET_DEVICE=%s\n' "$1" >/etc/ovms/ovms.env
-  chmod 0644 /etc/ovms/ovms.env
-  systemctl restart ovms
 }
 
 check_gpu_access() {
@@ -483,22 +482,14 @@ if run_probes; then
   exit 0
 fi
 journalctl -u ovms -n 40 --no-pager >&2 || true
-if [[ "$device" == GPU && "${1:-}" == --allow-cpu-fallback ]]; then
-  echo "[WARN] GPU inference failed; switching OVMS to CPU so the API remains usable." >&2
-  set_device CPU
-  if run_probes; then
-    echo "[WARN] Text and image inference passed on CPU. GPU mode remains unverified/failed." >&2
-    exit 0
-  fi
-fi
-echo "[ERROR] OVMS did not pass its inference health checks." >&2
+echo "[ERROR] OVMS did not pass its $device inference health checks; device setting was not changed." >&2
 exit 1
 HEALTHCHECK
 chmod 0755 /usr/local/sbin/ovms-healthcheck
 
 cat >/etc/systemd/system/ovms.service <<EOF
 [Unit]
-Description=OpenVINO Model Server (Intel GPU with health-tested CPU fallback)
+Description=OpenVINO Model Server (Intel GPU)
 Wants=network-online.target
 After=network-online.target
 
@@ -514,7 +505,7 @@ Environment=LD_LIBRARY_PATH=/opt/ovms/lib
 Environment=PATH=/opt/ovms/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 Environment=PYTHONPATH=/opt/ovms/lib/python
 EnvironmentFile=/etc/ovms/ovms.env
-ExecStart=/opt/ovms/bin/ovms --source_model ${OVMS_MODEL_ID} --model_repository_path /var/lib/ovms/models --model_name ${OVMS_MODEL_NAME} --rest_port 8000 --task text_generation --pipeline_type VLM_CB --target_device \${OVMS_TARGET_DEVICE}
+ExecStart=/opt/ovms/bin/ovms --source_model ${OVMS_MODEL_ID} --model_repository_path /var/lib/ovms/models --model_name ${OVMS_MODEL_NAME} --rest_port 8000 --task text_generation --pipeline_type VLM --target_device \${OVMS_TARGET_DEVICE}
 Restart=on-failure
 RestartSec=5
 TimeoutStartSec=0
@@ -553,9 +544,9 @@ IN_CONTAINER
     sleep 2
   done
   pct exec "$target_ct" -- true >/dev/null 2>&1 || die "CT ${target_ct} did not restart after applying its render-group mapping."
-  pct exec "$target_ct" -- bash -lc 'clinfo -l 2>&1 | grep -qi Intel' || msg_warn "clinfo cannot see the Intel GPU in CT ${target_ct}; the inference probe will determine whether CPU fallback is needed."
+  pct exec "$target_ct" -- bash -lc 'clinfo -l 2>&1 | grep -qi Intel' || msg_warn "clinfo cannot see the Intel GPU in CT ${target_ct}; GPU-only inference validation may fail. No CPU fallback will be performed."
   pct exec "$target_ct" -- systemctl enable --now ovms.service
-  pct exec "$target_ct" -- /usr/local/sbin/ovms-healthcheck --allow-cpu-fallback
+  pct exec "$target_ct" -- /usr/local/sbin/ovms-healthcheck
 }
 
 print_install_summary() {
@@ -564,7 +555,7 @@ print_install_summary() {
   target_device="$(pct exec "$target_ct" -- bash -lc '. /etc/ovms/ovms.env; printf "%s" "${OVMS_TARGET_DEVICE:-GPU}"' 2>/dev/null || printf 'unknown')"
   msg_ok "Text and image inference checks passed on ${target_device}."
   if [[ "$target_device" != GPU ]]; then
-    printf '\033[1;33m[WARN]\033[0m GPU inference did not pass; OVMS is configured for CPU fallback.\n'
+    printf '\033[1;33m[WARN]\033[0m OVMS is configured for %s; GPU acceleration is not verified.\n' "$target_device"
   fi
   printf '\nContainer: %s (%s); render device: /dev/dri/renderD128\n' "$target_ct" "$ct_hostname"
   printf 'OpenAI-compatible endpoint: http://%s:8000/v1\n' "${ct_ip:-<CT-IP>}"
@@ -668,7 +659,7 @@ Bridge: ${BRIDGE} (DHCP)
 
 Template: ${TEMPLATE} ($([[ "$TEMPLATE_PRESENT" == 1 ]] && printf 'already cached' || printf 'will download after confirmation'))
 OVMS model: ${OVMS_MODEL_NAME} (~3.1 GB, first startup)
-Validation: real text and image inference; GPU is kept only if both probes pass, otherwise CPU fallback is tested.
+Validation: GPU-only text and image inference; install stops on failure and does not switch to CPU.
 
 No container is created and no template is downloaded until you confirm. Existing guests are not modified."
 if ! whiptail --backtitle "OVMS Proxmox Helper" --title "CONFIRM INSTALLATION" --yesno "$PLAN" 22 78; then
