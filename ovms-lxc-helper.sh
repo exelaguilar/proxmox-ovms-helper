@@ -178,7 +178,7 @@ export DEBIAN_FRONTEND=noninteractive
 
 apt-get update
 apt-get install -y --no-install-recommends \
-  ca-certificates curl libxml2 software-properties-common \
+  ca-certificates curl libxml2 libpython3.12-dev software-properties-common \
   python3-pip python3-venv
 
 # Intel's Ubuntu compute packages provide the userspace Level Zero/OpenCL
