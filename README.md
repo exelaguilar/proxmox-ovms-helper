@@ -82,14 +82,18 @@ ovms-helper healthcheck
 ## Home Assistant
 
 For LLM Vision, add a **Custom OpenAI** provider (not the Ollama provider).
-The current Custom OpenAI form expects the full chat-completions endpoint.
-Use:
+Use the endpoint format requested by your installed LLM Vision version. For a
+form whose placeholder includes `/v1/chat/completions` (like the current
+configuration screen):
 
 ```text
 API key:          openai
 Custom endpoint:  http://<CT-IP>:8000/v1/chat/completions
 Default model:    qwen3-vl-4b
 ```
+
+LLM Vision 1.7 and newer asks for the base URL without `/chat/completions`; in
+that version use `http://<CT-IP>:8000/v1` instead.
 
 The API does not require authentication; `openai` is a dummy key for the
 integration's required field. In LLM Vision's Settings, leave **Fallback
