@@ -1197,7 +1197,7 @@ GPU render node: ${GPU_NODE}
 Extra OVMS arguments: ${OVMS_EXTRA_ARGS:-none}
 
 Template: ${TEMPLATE} ($([[ "$TEMPLATE_PRESENT" == 1 ]] && printf 'already cached' || printf 'will download to %s' "$TEMPLATE_STORAGE"))
-OVMS model: ${OVMS_MODEL_NAME} (~3.1 GB, first startup)
+OVMS model: ${OVMS_MODEL_NAME} (~3.1 GB, downloaded during install)
 Validation: GPU-only text and image inference; install stops on failure and does not switch to CPU.
 
 No container is created and no template is downloaded until you confirm. Existing guests are not modified."
