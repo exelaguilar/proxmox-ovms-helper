@@ -181,8 +181,8 @@ ct_running() {
 }
 
 wait_for_ct() {
-  local ct="$1" attempt
-  for attempt in $(seq 1 30); do
+  local ct="$1"
+  for _ in $(seq 1 30); do
     if pct exec "$ct" -- true >/dev/null 2>&1; then return 0; fi
     sleep 2
   done
