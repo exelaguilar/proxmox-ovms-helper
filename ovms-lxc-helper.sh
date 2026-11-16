@@ -514,8 +514,8 @@ chmod 0644 /etc/ovms/ovms.env
 cat >/usr/local/sbin/ovms-pull-model <<'EOF'
 #!/usr/bin/env bash
 # Downloads (or resumes) the model with "ovms --pull" while the service is
-# stopped. OVMS 2026.4.0 aborts with "free(): invalid next size" when serving
-# mode has to download a missing model itself, so the service never does it.
+# stopped, so the ~3 GB download is visible, retried, and resumable instead of
+# happening inside a service start that systemd may restart mid-download.
 set -Eeuo pipefail
 # shellcheck disable=SC1091
 . /etc/ovms/ovms.env

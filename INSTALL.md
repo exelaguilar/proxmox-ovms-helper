@@ -13,7 +13,7 @@ The created guest is an unprivileged Ubuntu 24.04 LXC with `nesting=1,keyctl=1` 
 
 **SSH:** the helper does not enable or disable SSH. The Proxmox Ubuntu template already runs `sshd`, with root login limited to SSH keys. If you do not use SSH, disable it inside the container with `systemctl disable --now ssh.socket ssh.service`.
 
-OVMS 2026.4.0 is installed as a native service under `/opt/ovms`. The installer verifies the pinned OVMS archive checksum before installing it. The model, `OpenVINO/Qwen3-VL-4B-Instruct-int4-ov`, uses about 3.1 GB. It is downloaded from Hugging Face during installation by a separate `ovms --pull` step, before the service first starts. OVMS 2026.4.0 crashes (`free(): invalid next size`) if the service has to download a missing model itself. The download resumes if interrupted. To fetch it again, run `ovms-helper pull` inside the container. The Intel GPU runtime comes from the `ppa:kobuk-team/intel-graphics` PPA, which is not version-pinned. The installed versions are recorded in `/etc/ovms/runtime-versions.txt`.
+OVMS 2026.4.0 is installed as a native service under `/opt/ovms`. The installer verifies the pinned OVMS archive checksum before installing it. The model, `OpenVINO/Qwen3-VL-4B-Instruct-int4-ov`, uses about 3.1 GB. It is downloaded from Hugging Face during installation by a separate `ovms --pull` step, before the service first starts. The download shows progress, retries, and resumes if interrupted. To fetch it again, run `ovms-helper pull` inside the container. The Intel GPU runtime comes from the `ppa:kobuk-team/intel-graphics` PPA, which is not version-pinned. The installed versions are recorded in `/etc/ovms/runtime-versions.txt`.
 
 ## Install
 

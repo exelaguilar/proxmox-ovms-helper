@@ -51,8 +51,18 @@ Suggested report text:
 
 Before sending, attach the relevant OVMS startup/crash logs, exact Proxmox host kernel (`uname -r`), host OS/PVE version, GPU firmware/driver and Intel Graphics Compiler/OpenVINO package versions, and the exact service command/config. Redact IPs, tokens, and other private details.
 
-## Separate issue: crash when the service downloads the model
+## Open issue: intermittent startup abort on a fresh container
 
-This is not GPU-related, but it affects fresh installs. When OVMS 2026.4.0 was started in serving mode with `--source_model` and the model was not yet in `--model_repository_path`, it aborted right after `Started servable loading queue thread` with `free(): invalid next size (fast)` (SIGABRT). It did this on every restart. The same crash happened when OVMS was run by hand outside systemd, so the unit's hardening is not the cause. The same model downloaded normally with `ovms --pull`, and serving it afterwards worked.
+This was observed on 2026-11-16 during a fresh-install test on an Intel Core Ultra 9 285H host (PVE 9.1.9, kernel 6.17.2-1-pve). The root cause is not known.
 
-The helper therefore downloads the model with `ovms --pull` (`/usr/local/sbin/ovms-pull-model`) before the service first starts. Existing installs whose model is already present were never affected.
+- **Symptom:** OVMS 2026.4.0 aborted about 1 ms after `Started servable loading queue thread` with `free(): invalid next size (fast)` (SIGABRT), before any GPU work.
+- **When it happened:** on every start for about 20 minutes on the new container, eight times in a row. It happened under systemd and when run by hand outside systemd, with and without the model downloaded.
+- **What did not explain it:**
+  - The model files and `graph.pbtxt` were byte-identical to those of a working container.
+  - Python packages were identical, and the Ubuntu package differences were point releases that a working container also ran.
+  - Matching the working container's 8 cores/32 GB did not stop the next crash.
+- **What changed:** after one run under `gdb`, which loaded fully, the abort did not recur in 12 further starts. Those starts included systemd and manual runs, an empty `~/.cache`, and 4 cores on CPU set 0-3 as well as 8 cores.
+
+Because it is heap corruption, it is timing- or layout-sensitive. The helper's health check catches it: setup stops with the crash log, and nothing switches to CPU. If a fresh install hits it, run `ovms-helper restart` (or `--repair <CTID>` from the host) and then `ovms-helper healthcheck`. If it persists, capture `journalctl -u ovms` and the container's CPU set (`cat /sys/fs/cgroup/lxc/<CTID>/cpuset.cpus.effective` on the host) for an upstream report.
+
+Separately, the helper downloads the model with `ovms --pull` (`/usr/local/sbin/ovms-pull-model`) before the service first starts. The download is then visible, retried, and resumable, instead of happening inside a service start that systemd may restart.
