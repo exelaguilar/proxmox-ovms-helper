@@ -442,7 +442,7 @@ getent hosts archive.ubuntu.com >/dev/null 2>&1 || { echo "No working DNS/networ
 
 # Keep a copy of every file this run replaces, so local edits are recoverable.
 for managed in /etc/systemd/system/ovms.service /etc/ovms/ovms.env /etc/ovms/proxmox-helper-managed \
-  /usr/local/bin/ovms-helper /usr/local/sbin/ovms-healthcheck /usr/local/sbin/ovms-validate-device \
+  /usr/local/bin/ovms-helper /usr/local/sbin/ovms-healthcheck /usr/local/sbin/ovms-validate-device /usr/local/sbin/ovms-pull-model \
   /usr/bin/update /etc/profile.d/00-ovms-details.sh /etc/systemd/system/container-getty@1.service.d/override.conf; do
   if [[ -e "$managed" ]]; then
     mkdir -p "$BACKUP_DIR"
@@ -505,10 +505,38 @@ dpkg-query -W -f='${binary:Package}\t${Version}\n' 2>/dev/null \
 # (for example --allowed_media_domains) that repair carries forward.
 cat >/etc/ovms/ovms.env <<EOF
 OVMS_TARGET_DEVICE=GPU
+OVMS_MODEL_ID=${OVMS_MODEL_ID}
 OVMS_MODEL_NAME=${OVMS_MODEL_NAME}
 OVMS_EXTRA_ARGS="${OVMS_EXTRA_ARGS}"
 EOF
 chmod 0644 /etc/ovms/ovms.env
+
+cat >/usr/local/sbin/ovms-pull-model <<'EOF'
+#!/usr/bin/env bash
+# Downloads (or resumes) the model with "ovms --pull" while the service is
+# stopped. OVMS 2026.4.0 aborts with "free(): invalid next size" when serving
+# mode has to download a missing model itself, so the service never does it.
+set -Eeuo pipefail
+# shellcheck disable=SC1091
+. /etc/ovms/ovms.env
+systemctl stop ovms.service 2>/dev/null || true
+cd /var/lib/ovms
+for attempt in 1 2 3; do
+  if runuser -u ovms -- env HOME=/var/lib/ovms HF_HOME=/var/lib/ovms/.cache/huggingface \
+    LD_LIBRARY_PATH=/opt/ovms/lib PYTHONPATH=/opt/ovms/lib/python \
+    /opt/ovms/bin/ovms --pull --source_model "$OVMS_MODEL_ID" \
+    --model_repository_path /var/lib/ovms/models --model_name "$OVMS_MODEL_NAME" \
+    --task text_generation --pipeline_type VLM --target_device GPU; then
+    echo "Model ${OVMS_MODEL_ID} is present in /var/lib/ovms/models."
+    exit 0
+  fi
+  echo "Model download attempt ${attempt} failed; retrying (downloads resume where they stopped)." >&2
+  sleep 10
+done
+echo "Model download failed after 3 attempts. Check DNS/Internet access, then run: ovms-helper pull" >&2
+exit 1
+EOF
+chmod 0755 /usr/local/sbin/ovms-pull-model
 
 cat >/usr/local/sbin/ovms-validate-device <<'EOF'
 #!/usr/bin/env bash
@@ -561,6 +589,11 @@ case "${1:-}" in
   restart) systemctl restart ovms ;;
   logs) journalctl -u ovms -f ;;
   healthcheck) /usr/local/sbin/ovms-healthcheck ;;
+  pull)
+    /usr/local/sbin/ovms-pull-model
+    systemctl reset-failed ovms 2>/dev/null || true
+    systemctl start ovms
+    ;;
   update)
     export DEBIAN_FRONTEND=noninteractive
     free_kib="$(df -Pk / | awk 'NR == 2 { print $4 }')"
@@ -597,7 +630,7 @@ case "${1:-}" in
     apt-get clean
     rm -rf /var/lib/apt/lists/*
     ;;
-  *) printf 'Usage: ovms-helper {status|restart|logs|healthcheck|update}\n' >&2; exit 2 ;;
+  *) printf 'Usage: ovms-helper {status|restart|logs|healthcheck|update|pull}\n' >&2; exit 2 ;;
 esac
 EOF
 chmod 0755 /usr/local/bin/ovms-helper
@@ -820,6 +853,8 @@ IN_CONTAINER
 
   pct exec "$target_ct" -- runuser -u ovms -- bash -c 'clinfo -l 2>&1 | grep -qi Intel' \
     || die "The ovms user in CT ${target_ct} cannot see the Intel GPU through clinfo. Check ${GPU_NODE} and the render group; no CPU fallback will be configured."
+  msg_info "Checking/downloading model ${OVMS_MODEL_ID} (about 3.1 GB on first install; resumable)"
+  pct exec "$target_ct" -- /usr/local/sbin/ovms-pull-model
   pct exec "$target_ct" -- systemctl enable ovms.service >/dev/null 2>&1
   pct exec "$target_ct" -- systemctl reset-failed ovms.service >/dev/null 2>&1 || true
   pct exec "$target_ct" -- systemctl restart ovms.service
@@ -847,7 +882,7 @@ print_install_summary() {
   printf 'Logs: pct exec %s -- journalctl -u ovms -f\n' "$target_ct"
   printf 'Read-only check from the host: bash %s --check %s\n' "$0" "$target_ct"
   printf 'Update with a snapshot first: bash %s --update %s\n' "$0" "$target_ct"
-  printf 'Service helper: pct exec %s -- ovms-helper {status|restart|logs|healthcheck|update}\n' "$target_ct"
+  printf 'Service helper: pct exec %s -- ovms-helper {status|restart|logs|healthcheck|update|pull}\n' "$target_ct"
   printf 'Console autologin: enabled on LXC tty1. SSH is left as the Ubuntu template ships it (root key-only).\n'
   printf 'The API has no authentication configured; keep it on your trusted LAN or firewall it to Home Assistant.\n'
   [[ -z "$SNAPSHOT_NAME" ]] || printf 'Rollback point: pct rollback %s %s (delete when satisfied: pct delsnapshot %s %s)\n' "$target_ct" "$SNAPSHOT_NAME" "$target_ct" "$SNAPSHOT_NAME"

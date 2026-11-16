@@ -14,7 +14,7 @@ This personal helper installs [OpenVINO Model Server (OVMS)](https://github.com/
 - **GPU only.** The service refuses to start with any device other than `GPU`, and the health check confirms the running server was started on the GPU. Nothing switches to CPU.
 - A Proxmox-style interactive setup, tty1 root-console autologin, and an in-container `update` command.
 
-The first service start downloads roughly 3.1 GB of model files. The default LXC sizing is 8 CPU cores, 16 GiB RAM, and a 48 GiB root disk with DHCP. Advanced Setup lets you choose the container ID, resources, storage, bridge, static IPv4, VLAN tag, and the domains OVMS may fetch image URLs from.
+Installation downloads roughly 3.1 GB of model files. The default LXC sizing is 8 CPU cores, 16 GiB RAM, and a 48 GiB root disk with DHCP. Advanced Setup lets you choose the container ID, resources, storage, bridge, static IPv4, VLAN tag, and the domains OVMS may fetch image URLs from.
 
 ## How it fits together
 

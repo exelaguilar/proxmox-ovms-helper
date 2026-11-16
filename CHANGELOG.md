@@ -18,6 +18,7 @@ Fixes from a repository audit and a read-only check of a live v1.2.0 container.
 - Proxmox notes written by the helper are updated to the new version. Notes you wrote yourself are left alone.
 
 ### Fresh installs
+- **Fixes a fresh-install failure.** OVMS 2026.4.0 aborted with `free(): invalid next size (fast)` in a restart loop when the service had to download the missing model itself. The model is now downloaded by a separate `ovms --pull` step (`/usr/local/sbin/ovms-pull-model`, also available as `ovms-helper pull`) before the service first starts. That step retries, and interrupted downloads resume.
 - Detects the Intel render node by PCI vendor instead of assuming `renderD128`.
 - Waits for container DNS/network before running `apt-get`.
 - Advanced Setup adds a static IPv4 address and gateway, a VLAN tag, and allowed image-URL domains.

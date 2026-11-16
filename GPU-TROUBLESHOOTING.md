@@ -50,3 +50,9 @@ Suggested report text:
 > On an Intel Arrow Lake iGPU (`8086:7d51`, `i915`) passed through to an unprivileged Ubuntu 24.04 LXC on Proxmox, OVMS 2026.4.0 serving `OpenVINO/Qwen3-VL-4B-Instruct-int4-ov` on GPU failed with `CL_OUT_OF_RESOURCES` using `VLM_CB`, including with one sequence. Changing only `--pipeline_type` to `VLM` while retaining `--target_device GPU` passed text and image inference, including a Home Assistant image request. The image request took about 7 seconds in one sample. The LXC uses the Proxmox host kernel and Intel driver, so this is not a bare-metal Ubuntu A/B test. Is this a known pipeline/device limitation, and what additional logs or version details would help isolate it?
 
 Before sending, attach the relevant OVMS startup/crash logs, exact Proxmox host kernel (`uname -r`), host OS/PVE version, GPU firmware/driver and Intel Graphics Compiler/OpenVINO package versions, and the exact service command/config. Redact IPs, tokens, and other private details.
+
+## Separate issue: crash when the service downloads the model
+
+This is not GPU-related, but it affects fresh installs. When OVMS 2026.4.0 was started in serving mode with `--source_model` and the model was not yet in `--model_repository_path`, it aborted right after `Started servable loading queue thread` with `free(): invalid next size (fast)` (SIGABRT). It did this on every restart. The same crash happened when OVMS was run by hand outside systemd, so the unit's hardening is not the cause. The same model downloaded normally with `ovms --pull`, and serving it afterwards worked.
+
+The helper therefore downloads the model with `ovms --pull` (`/usr/local/sbin/ovms-pull-model`) before the service first starts. Existing installs whose model is already present were never affected.
