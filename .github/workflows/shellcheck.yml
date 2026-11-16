@@ -1,0 +1,20 @@
+name: shellcheck
+
+on:
+  push:
+    paths: ["**.sh", ".github/workflows/shellcheck.yml"]
+  pull_request:
+    paths: ["**.sh", ".github/workflows/shellcheck.yml"]
+
+permissions:
+  contents: read
+
+jobs:
+  shellcheck:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Syntax check
+        run: bash -n ovms-lxc-helper.sh
+      - name: ShellCheck
+        run: shellcheck --severity=warning ovms-lxc-helper.sh
