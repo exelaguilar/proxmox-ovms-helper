@@ -12,7 +12,7 @@ Fixes from a repository audit and a read-only check of a live v1.2.0 container.
 ### Existing containers
 - New `--check <CTID>`: a read-only report of the helper version, CPU-fallback leftovers, device, GPU mapping, service state, endpoint, disk, snapshots, and SSH.
 - New `--update <CTID>`: takes a snapshot, then runs the in-container update. It refuses to run on containers that still have v1.2.x CPU-fallback scripts.
-- `--repair` now takes a snapshot first and backs up each replaced file to `/var/backups/ovms-helper/<timestamp>/`. It keeps extra OVMS arguments (such as `--allowed_media_domains`) in `OVMS_EXTRA_ARGS`, moving them out of hand-edited `ExecStart` lines.
+- `--repair` now takes a snapshot first and backs up each replaced file to `/var/backups/ovms-helper/<timestamp>/`. It detects extra OVMS arguments (such as `--allowed_media_domains`), including those in hand-edited `ExecStart` lines from older versions, and shows them in an editable prompt. The confirmed value is stored in `OVMS_EXTRA_ARGS`. The repair dialog also says that the Intel runtime is upgraded.
 - `--repair` reuses the container's existing `devN` render mapping instead of always writing `dev0`. It restarts the container only when the mapping or features change.
 - OVMS is extracted to a staging directory and swapped into `/opt/ovms`, so files from two versions never mix. The previous tree is kept as `/opt/ovms.prev`.
 - Proxmox notes written by the helper are updated to the new version. Notes you wrote yourself are left alone.
@@ -26,6 +26,7 @@ Fixes from a repository audit and a read-only check of a live v1.2.0 container.
 - `numpy` is pinned. Intel runtime package versions are recorded in `/etc/ovms/runtime-versions.txt`.
 
 ### Service and update
+- `--check` exits 1 when any item needs attention. Host commands run with `LC_ALL=C.UTF-8`, which avoids setlocale warnings inside the guest.
 - `RestartSec=30` with a start limit (10 starts in 15 minutes) replaces an endless 5-second restart loop.
 - `update` checks for 2 GiB free, keeps existing config files on package upgrades (`--force-confold`), stops OVMS only after `apt-get update` succeeds, and reminds you that OVMS itself is not updated.
 

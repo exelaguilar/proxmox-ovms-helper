@@ -2,6 +2,9 @@
 # Personal Proxmox VE helper: creates an Ubuntu LXC and installs native OVMS.
 # Standalone implementation following the Community Scripts interaction style.
 set -Eeuo pipefail
+# The host locale is often not generated inside the guest; use one that always
+# exists so commands run through pct exec do not print setlocale warnings.
+export LC_ALL=C.UTF-8
 
 readonly HELPER_VERSION="1.4.0"
 readonly OVMS_VERSION="2026.4.0"
@@ -934,7 +937,7 @@ run_check() {
   fi
 
   value="$(detect_extra_args "$ct")"
-  check_report info "Extra OVMS arguments that --repair will keep: ${value:-none}."
+  check_report info "Extra OVMS arguments (repair will ask to keep, edit, or clear): ${value:-none}."
 
   value="$(pct exec "$ct" -- df -Pk / 2>/dev/null | awk 'NR == 2 { print $4 }' || true)"
   if [[ "$value" =~ ^[0-9]+$ ]] && (( value >= 4 * 1024 * 1024 )); then check_report ok "Root disk free: $((value / 1024 / 1024)) GiB."
@@ -982,8 +985,9 @@ for required in pct pvesh pvesm pveam whiptail openssl curl sha256sum; do
 done
 
 if [[ "$ACTION" == check ]]; then
-  run_check "$TARGET_CT"
-  exit 0
+  # Exit 1 when any item needs attention, so --check can be scripted.
+  if run_check "$TARGET_CT" && (( CHECK_PROBLEMS == 0 )); then exit 0; fi
+  exit 1
 fi
 
 [[ -t 0 && -t 1 ]] || die "Run this helper from an interactive Proxmox shell."
@@ -1021,6 +1025,12 @@ if [[ "$ACTION" == repair ]]; then
   validate_existing_ct "$CTID" repair
   OVMS_EXTRA_ARGS="$(detect_extra_args "$CTID")"
   [[ "$OVMS_EXTRA_ARGS" =~ $EXTRA_ARGS_RE ]] || die "CT ${CTID} has extra OVMS arguments with unexpected characters ('${OVMS_EXTRA_ARGS}'). Move them to OVMS_EXTRA_ARGS in /etc/ovms/ovms.env by hand, then retry."
+  # Detected flags may be stale (for example an old --allowed_media_domains
+  # host), so let the operator keep, edit, or clear them explicitly.
+  OVMS_EXTRA_ARGS="$(whiptail --backtitle "OVMS Proxmox Helper" --title "EXTRA OVMS ARGUMENTS" \
+    --inputbox "These OVMS arguments were found in CT ${CTID} and are not managed by the helper. Keep, edit, or clear them (blank = none). Check that any --allowed_media_domains host is still the right one." \
+    12 80 "$OVMS_EXTRA_ARGS" 3>&1 1>&2 2>&3)" || die "Repair cancelled; no changes were made."
+  [[ "$OVMS_EXTRA_ARGS" =~ $EXTRA_ARGS_RE ]] || die "Extra OVMS arguments contain unexpected characters; nothing was changed."
   REPAIR_NOTE=""
   if [[ "$REPAIR_ADOPT" == 1 ]]; then
     REPAIR_NOTE=$'\n\nThis CT has no helper ownership marker. You are explicitly adopting it as the OVMS helper container.'
@@ -1030,11 +1040,12 @@ if [[ "$ACTION" == repair ]]; then
 
 - A snapshot is taken first (you can roll back).
 - Replaced files are backed up to /var/backups/ovms-helper/ in the CT.
-- Extra OVMS arguments kept: ${OVMS_EXTRA_ARGS:-none}
+- Extra OVMS arguments: ${OVMS_EXTRA_ARGS:-none}
 - GPU node: ${GPU_NODE}. The CT restarts only if its mapping or features need changes.
+- The Intel GPU runtime is upgraded to the newest PPA version.
 - OVMS is unavailable while it reinstalls and reloads the model.
 
-No new container will be created.${REPAIR_NOTE}" 20 80; then
+No new container will be created.${REPAIR_NOTE}" 21 80; then
     msg_info "Repair cancelled; no changes were made."
     exit 0
   fi

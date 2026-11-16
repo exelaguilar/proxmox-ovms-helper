@@ -41,7 +41,7 @@ bash /root/ovms-lxc-helper.sh --repair <CTID>    # snapshot, then reinstall OVMS
 
 - **`--check`** reports the helper version inside the container and whether old CPU-fallback logic is present. It also shows the configured device and the device the running OVMS process was started with, and whether that process holds the GPU render node. It covers the render-group GID mapping, `clinfo` as the `ovms` user, service state and restart count, the `/v1/models` endpoint, free disk space, extra OVMS arguments, snapshots, and whether `sshd` is listening.
 - **`--update`** refuses to run if the container still has CPU-fallback scripts from an old helper version. Otherwise it takes a snapshot named `ovms-update-<timestamp>` and runs the container's `update`. If the GPU health check fails afterwards, roll back with `pct rollback <CTID> <snapshot>`.
-- **`--repair`** takes a snapshot named `ovms-repair-<timestamp>`, backs up each file it replaces to `/var/backups/ovms-helper/<timestamp>/` inside the container, and reinstalls OVMS and the helper scripts. It keeps any extra OVMS arguments it finds (see below). The container is restarted only if its GPU mapping or features need to change. OVMS is unavailable while it reinstalls and reloads the model.
+- **`--repair`** takes a snapshot named `ovms-repair-<timestamp>`, backs up each file it replaces to `/var/backups/ovms-helper/<timestamp>/` inside the container, and reinstalls OVMS and the helper scripts. It shows any extra OVMS arguments it finds so you can keep, edit, or clear them (see below). It also upgrades the Intel GPU runtime to the newest PPA version, and the GPU health check then validates that runtime. The container is restarted only if its GPU mapping or features need to change. OVMS is unavailable while it reinstalls and reloads the model.
 
 If the container's storage cannot take snapshots, the helper asks before continuing without one. Snapshots are not removed automatically; delete them with `pct delsnapshot <CTID> <snapshot>` once you are satisfied.
 
@@ -51,8 +51,8 @@ A legacy container without the helper's ownership marker can be adopted by `--re
 
 Containers installed with helper v1.2.x or earlier have CPU-fallback logic in `ovms-helper` and `ovms-healthcheck`. Running `update` inside them can switch OVMS to CPU when a GPU check fails. To migrate:
 
-1. Run `--check <CTID>` and note the "Extra OVMS arguments that --repair will keep" line.
-2. Run `--repair <CTID>`. Confirm that the dialog lists the same extra arguments.
+1. Run `--check <CTID>` and note the "Extra OVMS arguments" line. Decide whether each one is still needed; an `--allowed_media_domains` host may be stale.
+2. Run `--repair <CTID>`. In the "Extra OVMS arguments" prompt, keep, edit, or clear the detected flags.
 3. Run `--check <CTID>` again. It should report the current helper version and no CPU-fallback logic.
 
 ## Extra OVMS arguments
@@ -60,10 +60,12 @@ Containers installed with helper v1.2.x or earlier have CPU-fallback logic in `o
 OVMS flags that the helper does not manage live in `OVMS_EXTRA_ARGS` in `/etc/ovms/ovms.env`, for example:
 
 ```bash
-OVMS_EXTRA_ARGS="--allowed_media_domains 192.168.1.33"
+OVMS_EXTRA_ARGS="--allowed_media_domains <home-assistant-host>"
 ```
 
-`--allowed_media_domains` is needed when a client sends an image URL instead of inline base64 data. After editing the file, run `systemctl restart ovms`. `--repair` keeps this value. When it upgrades a container whose unit file was edited by hand, it moves any unmanaged flags from `ExecStart` into this variable.
+`--allowed_media_domains` is needed only when a client sends an image **URL** for OVMS to fetch. Inline base64 images, which LLM Vision normally sends, do not need it. Allow only the host that actually serves the images, and remove the flag if you don't use image URLs. After editing the file, run `systemctl restart ovms`.
+
+`--repair` detects this value, including unmanaged flags in a hand-edited `ExecStart` from older versions. It then shows them in an editable prompt so you can keep, change, or clear them before anything is changed. Whatever you confirm is stored in `OVMS_EXTRA_ARGS`.
 
 `OVMS_TARGET_DEVICE` in the same file must stay `GPU` (or `GPU.<n>`). The service's start check refuses anything else, including `CPU` and `AUTO`.
 

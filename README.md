@@ -44,7 +44,7 @@ Other modes, all run on the Proxmox host:
 | --- | --- |
 | `bash ovms-lxc-helper.sh --check <CTID>` | Read-only report: helper version, configured and running device, GPU mapping, service state, model endpoint. Changes nothing. |
 | `bash ovms-lxc-helper.sh --update <CTID>` | Snapshots the LXC, then runs its in-container `update` and GPU health check. |
-| `bash ovms-lxc-helper.sh --repair <CTID>` | Snapshots the LXC, then reinstalls OVMS and the helper scripts. Keeps extra OVMS arguments and backs up every replaced file. |
+| `bash ovms-lxc-helper.sh --repair <CTID>` | Snapshots the LXC, then reinstalls OVMS and the helper scripts. Shows extra OVMS arguments for you to keep, edit, or clear, and backs up every replaced file. |
 
 **Installed with helper v1.2.x or earlier?** Those versions put CPU-fallback logic inside the container, and their `update` can still switch OVMS to CPU. Run `--check`, then `--repair`. See [Upgrading an existing container](INSTALL.md#upgrading-an-existing-container).
 
