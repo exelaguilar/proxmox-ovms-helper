@@ -1063,12 +1063,14 @@ if [[ "$ACTION" == repair ]]; then
   # Detected flags may be stale (for example an old --allowed_media_domains
   # host), so let the operator keep, edit, or clear them explicitly.
   # The leading space stops whiptail from parsing "--flag" as its own option.
-  EDITED_ARGS="$(whiptail --backtitle "OVMS Proxmox Helper" --title "EXTRA OVMS ARGUMENTS" \
-    --inputbox "These OVMS arguments were found in CT ${CTID} and are not managed by the helper. Keep, edit, or clear them (blank = none). Check that any allowed_media_domains host is still the right one." \
-    12 80 " ${OVMS_EXTRA_ARGS}" 3>&1 1>&2 2>&3)" || die "Repair cancelled; no changes were made."
-  [[ "$EDITED_ARGS" =~ $EXTRA_ARGS_RE ]] || die "Extra OVMS arguments contain unexpected characters; nothing was changed."
-  read -r -a EDITED_PARTS <<<"$EDITED_ARGS"
-  OVMS_EXTRA_ARGS="${EDITED_PARTS[*]}"
+  if [[ -n "$OVMS_EXTRA_ARGS" ]]; then
+    EDITED_ARGS="$(whiptail --backtitle "OVMS Proxmox Helper" --title "EXTRA OVMS ARGUMENTS" \
+      --inputbox "These OVMS arguments were found in CT ${CTID} and are not managed by the helper. Keep, edit, or clear them (blank = none). Check that any allowed_media_domains host is still the right one." \
+      12 80 " ${OVMS_EXTRA_ARGS}" 3>&1 1>&2 2>&3)" || die "Repair cancelled; no changes were made."
+    [[ "$EDITED_ARGS" =~ $EXTRA_ARGS_RE ]] || die "Extra OVMS arguments contain unexpected characters; nothing was changed."
+    read -r -a EDITED_PARTS <<<"$EDITED_ARGS"
+    OVMS_EXTRA_ARGS="${EDITED_PARTS[*]}"
+  fi
   REPAIR_NOTE=""
   if [[ "$REPAIR_ADOPT" == 1 ]]; then
     REPAIR_NOTE=$'\n\nThis CT has no helper ownership marker. You are explicitly adopting it as the OVMS helper container.'
